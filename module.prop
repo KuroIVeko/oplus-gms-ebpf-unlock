@@ -1,0 +1,6 @@
+id=unblock_gms_ebpf
+name=Unblock GMS eBPF Limit
+version=v1.0
+versionCode=1
+author=axiumhikari
+description=持续清除 ColorOS/Oplus 内核 eBPF 名单中对 GMS/Play商店/GSF/ConfigUpdater 的 WLAN+蜂窝联网限制 (map_oplus-netd_app_wlan_socket_uid_limit_map / app_qcom_socket_uid_limit_map)
