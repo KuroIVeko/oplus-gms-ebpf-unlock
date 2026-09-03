@@ -6,6 +6,8 @@ KernelSU 模块：解除 ColorOS / OnePlus（Oplus 系）系统内核 eBPF 层�
 
 在部分 OPPO / OnePlus / Realme（ColorOS / Oplus 统一系统）机型上，即使代理配置完全正确、其他 App 翻墙正常，**Google Play 服务（GMS）、Google Play 商店、Google 服务框架（GSF）、GMS 配置更新器（ConfigUpdater）** 这几个谷歌核心组件依然完全无法联网。
 
+**这个问题只在"无感代理"场景下出现**：本机部署 TProxy 透明代理（如 Box for Root / sing-box 的 tproxy 模式）、或连接自带翻墙能力的 WiFi 热点，都会触发；而标准 Android VPN（TUN 代理）、App 内配置的 HTTP/SOCKS 代理这类系统能感知到的联网方式则完全正常。推测 ColorOS 判断"是否处于可信联网环境"依据的是"系统层面能不能检测到 VPN/代理"，而不是实际连通性——TProxy 从设计上就不建 VPN 接口、不改 App 代理设置，对系统来说完全无感，于是被误判为"没代理、连不上 Google"，主动禁用 GMS 联网省电。这个出发点合理，但检测手段太粗糙，误伤了 TProxy 这类必须保持无感的翻墙方式，也没法靠"让系统识别到代理"解决。
+
 根因不是常见的省电策略、AppOps 或 iptables 规则,而是系统在内核 cgroup-eBPF 层维护的一张 **UID 限制名单**（pinned 在 `/sys/fs/bpf/map_oplus-netd_app_wlan_socket_uid_limit_map` 等 map 中），精确记录了这 4 个应用的 UID 并标记为受限。这一层比 `dumpsys netpolicy`、`iptables -L`、标准应用权限页面都更底层，用常规手段完全排查不到。
 
 ## 这个模块做什么
