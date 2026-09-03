@@ -1,7 +1,7 @@
 #!/system/bin/sh
-# late_start service：开机后持续清除 Oplus eBPF 名单里对 GMS 全家桶的 WLAN/蜂窝联网限制。
-# 之所以是"持续监控"而不是一次性删除：系统服务可能在开机后延迟写入，
-# 也可能在运行期间被重新写回，一次性删除无法保证长期生效。
+# late_start service：开机后清除 Oplus eBPF 名单里对 GMS 全家桶的 WLAN/蜂窝联网限制。
+# 实测系统只在开机时写入这张表一次，删除后运行期间不会被重新写回，
+# 所以只在开机后的时间窗口内高频检查，之后退出，不常驻轮询。
 
 MODDIR=${0%/*}
 BPFTOOL="$MODDIR/bpftool"
@@ -47,9 +47,9 @@ while [ ! -e /sys/fs/bpf/map_oplus-netd_app_wlan_socket_uid_limit_map ] && [ $i 
   i=$((i+1))
 done
 
-log "===== 模块启动，开始持续监控 ====="
+log "===== 模块启动，开机后高频检查 5 分钟 ====="
 
-# 开机后前 5 分钟每 5 秒检查一次（应对系统服务延迟/多次写入）
+# 开机后前 5 分钟每 5 秒检查一次（应对系统服务延迟写入）
 i=0
 while [ $i -lt 60 ]; do
   unblock_once
@@ -57,10 +57,4 @@ while [ $i -lt 60 ]; do
   i=$((i+1))
 done
 
-log "===== 前 5 分钟高频检查结束，转入低频常驻监控（每 60 秒）====="
-
-# 之后每 60 秒检查一次，常驻后台防止运行期间被重新写回
-while true; do
-  unblock_once
-  sleep 60
-done
+log "===== 高频检查结束，退出（实测运行期间不会被重新写回）====="
