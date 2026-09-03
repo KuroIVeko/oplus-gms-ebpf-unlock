@@ -12,19 +12,20 @@ KernelSU 模块：解除 ColorOS / OnePlus（Oplus 系）系统内核 eBPF 层�
 
 ## 这个模块做什么
 
-- 开机后清空 `map_oplus-netd_app_wlan_socket_uid_limit_map`（WLAN）和 `map_oplus-netd_app_qcom_socket_uid_limit_map`（蜂窝）两张表里对以下 4 个 UID 的限制记录：
+- 开机后清空 `map_oplus-netd_app_wlan_socket_uid_limit_map`（WLAN）和 `map_oplus-netd_app_qcom_socket_uid_limit_map`（蜂窝）两张表里对以下几个包对应 UID 的限制记录：
   | 包名                                 | 说明             |
   | ------------------------------------ | ---------------- |
   | `com.google.android.gms`           | Google Play 服务 |
   | `com.android.vending`              | Google Play 商店 |
   | `com.google.android.gsf`           | Google 服务框架  |
   | `com.google.android.configupdater` | GMS 配置更新器   |
+- **UID 是运行时动态解析的，不是硬编码**：同一个包名在不同设备、不同安装顺序下分配到的 UID 不一定一样，写死 UID 只对某一台特定设备当时有效。模块用 `包名 → /data/data/<包名> 目录属主 UID → BPF map key` 这条链路现查现算，对每台设备都适用，不依赖任何写死的数字。
 - **检查窗口**：系统服务在开机后写入这张表的时机不完全固定，所以模块在开机后 5 分钟内每 5 秒检查一次，确保赶上写入时机后立即清除；实测运行期间不会被重新写回，5 分钟窗口结束后脚本退出，不常驻轮询，不额外占用资源。
-- 运行日志记录在 `/data/adb/modules/unblock_gms_ebpf/unblock_gms.log`，方便你确认系统实际的写入时机。
+- 运行日志记录在 `/data/adb/modules/unblock_gms_ebpf/unblock_gms.log`，方便你确认系统实际的写入时机，以及每个包解析出来的 UID。
 
 ## 适用范围
 
-理论上适用于任何存在 `map_oplus-netd_*_socket_uid_limit_map` 这套 eBPF 限制机制的 ColorOS / Oplus 系机型。已在 **OnePlus PJZ110（ColorOS）+ KernelSU** 上验证有效。其他机型/系统版本可能需要自行确认这几张 map 是否存在、UID 是否一致。
+理论上适用于任何存在 `map_oplus-netd_*_socket_uid_limit_map` 这套 eBPF 限制机制的 ColorOS / Oplus 系机型，不依赖某一台设备特定的 UID（UID 是运行时动态解析的）。已在 **OnePlus PJZ110（ColorOS）+ KernelSU** 上验证有效。其他机型/系统版本可能需要自行确认这几张 map 是否存在。
 
 ## 安装
 
