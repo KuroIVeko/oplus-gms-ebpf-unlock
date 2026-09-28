@@ -1,6 +1,6 @@
 id=unblock_gms_ebpf
 name=Unblock GMS eBPF Limit
-version=v1.5.0
-versionCode=6
+version=v1.5.1
+versionCode=7
 author=SumiYune, Claude
-description=清空 ColorOS/Oplus 内核 eBPF 联网限制名单，解除对谷歌套件等 App 的联网限制（开机及 VPN 开关后自动处理）
+description=清除 ColorOS/Oplus 内核 eBPF 名单中对谷歌套件的联网限制（开机及 VPN 开关后自动处理）
