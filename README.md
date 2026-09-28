@@ -12,23 +12,24 @@ KernelSU 模块：解除 ColorOS / OnePlus（Oplus 系）系统内核 eBPF 层�
 
 ## 这个模块做什么
 
-- 开机后清空 `map_oplus-netd_app_wlan_socket_uid_limit_map`（WLAN）和 `map_oplus-netd_app_qcom_socket_uid_limit_map`（蜂窝）两张表里对以下几个包对应 UID 的限制记录：
-  | 包名                                 | 说明             |
-  | ------------------------------------ | ---------------- |
-  | `com.google.android.gms`           | Google Play 服务 |
-  | `com.android.vending`              | Google Play 商店 |
-  | `com.google.android.gsf`           | Google 服务框架  |
-  | `com.google.android.configupdater` | GMS 配置更新器   |
-- **UID 是运行时动态解析的，不是硬编码**：同一个包名在不同设备、不同安装顺序下分配到的 UID 不一定一样，写死 UID 只对某一台特定设备当时有效。模块用 `包名 → /data/user_de/0/<包名> 目录属主 UID → BPF map key` 这条链路现查现算，对每台设备都适用，不依赖任何写死的数字。`user_de` 是设备加密存储，开机后解锁屏幕前就能读到，不会因为还没解锁而漏掉。
+- 清空以下几张"禁止联网"名单里的**全部条目**（不存在的表自动跳过）：
+  | 表 | 作用 |
+  | --- | --- |
+  | `map_oplus-netd_app_wlan_socket_uid_limit_map` | 禁止 WLAN 联网 |
+  | `map_oplus-netd_app_qcom_socket_uid_limit_map` | 禁止蜂窝联网（骁龙平台） |
+  | `map_oplus-netd_app_mtk_socket_uid_limit_map` | 禁止蜂窝联网（天玑平台，未实机验证） |
+
+  系统写进这几张表的通常是 `com.google.android.gms`（Play 服务）、`com.android.vending`（Play 商店）、`com.google.android.configupdater`（GMS 配置更新器），开机时有时还有 `com.google.android.gsf`（服务框架）。
+- **全清，不按包名挑**：这几张表的作用就是"禁止某个 UID 联网"，系统往里写哪些包也不固定，所以模块不做任何 UID/包名匹配，有条目就删。`accept_*` / `allow_*` 这类放行名单不会动。
 - **什么时候清除**：
   - **开机阶段**：系统在开机后写入这张表的时机不固定，模块在开机后 5 分钟内每 5 秒检查一次。
   - **VPN 连接/断开后**：实测系统在**每次 VPN（虚拟网卡）连接或断开时都会重新写入这张表**，写入在 2 秒内完成。模块常驻监听网卡变化（`ip monitor link`，阻塞等待内核事件，不轮询、不占 CPU），并且只对 TUN 类网卡（`link/none`）做反应，忽略蜂窝数据 `rmnet_*` 等接口阵发性的频繁变化。检测到 VPN 网卡创建或删除后 3 秒清除一次，再过 10 秒补查一次。VPN 开关后谷歌套件最多断网几秒就会自动恢复。
   - **兜底**：每 5 分钟检查一次，防止还有其他未发现的写入时机。表为空时只做一次 map dump，开销可以忽略。
-- 运行日志记录在 `/data/adb/modules/unblock_gms_ebpf/unblock_gms.log`，每条删除记录都标明了触发原因（开机 / 网卡变化 / 定时），方便你确认系统实际的写入时机，以及每个包解析出来的 UID。日志超过 256KB 会自动截断。
+- 运行日志记录在 `/data/adb/modules/unblock_gms_ebpf/unblock_gms.log`，每条删除记录都标明了触发原因（开机 / 网卡变化 / 定时），以及每张表清掉了几条，方便你确认系统实际的写入时机。日志超过 256KB 会自动截断。
 
 ## 适用范围
 
-理论上适用于任何存在 `map_oplus-netd_*_socket_uid_limit_map` 这套 eBPF 限制机制的 ColorOS / Oplus 系机型，不依赖某一台设备特定的 UID（UID 是运行时动态解析的）。已在 **OnePlus PJZ110（ColorOS）+ KernelSU** 上验证有效。其他机型/系统版本可能需要自行确认这几张 map 是否存在。
+理论上适用于任何存在 `map_oplus-netd_*_socket_uid_limit_map` 这套 eBPF 限制机制的 ColorOS / Oplus 系机型，不依赖任何设备特定的 UID 或包名。已在 **OnePlus PJZ110（ColorOS）+ KernelSU** 上验证有效。其他机型/系统版本可能需要自行确认这几张 map 是否存在。
 
 ## 安装
 
@@ -52,6 +53,7 @@ zip -r oplus-gms-ebpf-unlock.zip module.prop customize.sh service.sh bpftool
 - 实测每次开机、以及每次 VPN 连接/断开都会被重新写入（ColorOS 17 / PJZ110_17.0.0.101 上确认；早期版本只在开机时写入）。重写的集合也不完全一致，例如 VPN 开关触发的那次不包含 GSF。如果你发现其他触发时机，欢迎提 Issue。
 - 写入最终经由 netd 的 oplus 扩展（`liboplusNetd.so` 中的 `OplusFirewallController`）完成，Java 侧入口是 `OplusNetworkManagementService.setFirewallUidRuleForNetworkType`，只允许 system/phone UID 调用。但具体是哪个系统服务发起的调用仍未定位，也没找到用户可配置的持久化数据源，怀疑是硬编码逻辑，所以只能在写入后清除，无法从源头关掉。
 - VPN 开关后到模块清除之间，谷歌套件会有几秒无法联网。
+- 因为是全清，如果你在系统设置里手动禁止某个 App 使用 WLAN / 移动数据，而系统恰好也是用这几张表实现的，那么这个限制会在下次触发时被模块解除（未验证系统开关是否落在这几张表上）。
 - 与旧版"开机清完就退出"相比，现在会常驻 4 个处于睡眠状态的小进程（`sh` ×3 + `ip monitor`，合计 RSS 约 12MB，大部分是共享页）。实测没有 VPN 事件时 2 分钟内 CPU 占用为 0；每 5 分钟的兜底检查单次约 7ms，且 `sleep` 不会把手机从深度休眠中唤醒。
 - 仅在骁龙平台（qcom 蜂窝 map）验证；天玑平台的等价 map 命名可能不同。
 

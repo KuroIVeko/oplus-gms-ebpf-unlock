@@ -24,5 +24,5 @@ fi
 chmod 755 "$MODPATH/bpftool"
 chmod 755 "$MODPATH/service.sh"
 
-ui_print "- 安装完成。重启手机后模块会在后台持续清除 GMS/Play商店/GSF/ConfigUpdater 的 eBPF 联网限制"
+ui_print "- 安装完成。重启手机后模块会在后台持续清空 eBPF 联网限制名单（GMS/Play 商店等）"
 ui_print "- 日志路径: /data/adb/modules/unblock_gms_ebpf/unblock_gms.log"
