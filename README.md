@@ -52,6 +52,7 @@ zip -r oplus-gms-ebpf-unlock.zip module.prop customize.sh service.sh bpftool
 - 实测每次开机、以及每次 VPN 连接/断开都会被重新写入（ColorOS 17 / PJZ110_17.0.0.101 上确认；早期版本只在开机时写入）。重写的集合也不完全一致，例如 VPN 开关触发的那次不包含 GSF。如果你发现其他触发时机，欢迎提 Issue。
 - 写入最终经由 netd 的 oplus 扩展（`liboplusNetd.so` 中的 `OplusFirewallController`）完成，Java 侧入口是 `OplusNetworkManagementService.setFirewallUidRuleForNetworkType`，只允许 system/phone UID 调用。但具体是哪个系统服务发起的调用仍未定位，也没找到用户可配置的持久化数据源，怀疑是硬编码逻辑，所以只能在写入后清除，无法从源头关掉。
 - VPN 开关后到模块清除之间，谷歌套件会有几秒无法联网。
+- 这几张表同时也是系统设置里"禁止某 App 使用 WLAN / 移动数据"开关的实现（实测：清空整张表后，手动禁止联网的 Chrome 也被放行了）。所以模块只删谷歌这几个包对应的条目，不能整表清空。v1.5.0 曾改为整表清空，已在 v1.5.1 回退。
 - 与旧版"开机清完就退出"相比，现在会常驻 4 个处于睡眠状态的小进程（`sh` ×3 + `ip monitor`，合计 RSS 约 12MB，大部分是共享页）。实测没有 VPN 事件时 2 分钟内 CPU 占用为 0；每 5 分钟的兜底检查单次约 7ms，且 `sleep` 不会把手机从深度休眠中唤醒。
 - 仅在骁龙平台（qcom 蜂窝 map）验证；天玑平台的等价 map 命名可能不同。
 
