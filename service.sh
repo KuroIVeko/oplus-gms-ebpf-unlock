@@ -2,7 +2,7 @@
 # late_start service：清除 Oplus eBPF 名单里对 GMS 全家桶的 WLAN/蜂窝联网限制。
 #
 # 系统不只在开机时写入这张表：VPN（虚拟网卡）每次连接/断开都会触发重新写入。
-# 所以这里常驻监听网卡变化（ip monitor link，阻塞等待，不占 CPU），
+# 所以这里常驻监听 TUN 网卡变化（ip monitor link，阻塞等待，不占 CPU），
 # 有变化时延迟几秒再检查清除；另有低频兜底检查，防止其他未知的写入路径。
 #
 # UID 通过包名动态解析，而不是硬编码：同一个包名在不同设备、不同安装顺序下
@@ -118,9 +118,15 @@ log "开机检查结束，转入常驻监听（网卡变化触发 + 每 ${FALLBA
 ) &
 
 # 主逻辑：监听网卡增删/状态变化（VPN 连接/断开会创建/销毁 tun 网卡）。
+# 只关心 TUN 类网卡（link/none）：蜂窝数据的 rmnet_* 是 link/[519]，
+# 会阵发性地频繁变化，不过滤的话几乎等于高频轮询。
 # 一次 VPN 开关会连续产生多条事件，用 PENDING 标记合并成一次延迟检查。
 while true; do
-  ip monitor link 2>/dev/null | while read -r _; do
+  ip -o monitor link 2>/dev/null | while read -r line; do
+    case "$line" in
+      *link/none*) ;;
+      *) continue ;;
+    esac
     [ -e "$PENDING" ] && continue
     touch "$PENDING"
     (
