@@ -2,7 +2,7 @@
 # late_start service：清除 Oplus eBPF 名单里对 GMS 全家桶的 WLAN/蜂窝联网限制。
 #
 # 系统不只在开机时写入这张表：VPN（虚拟网卡）每次连接/断开都会触发重新写入。
-# 所以这里常驻监听 TUN 网卡变化（ip monitor link，阻塞等待，不占 CPU），
+# 所以这里常驻监听 TUN 网卡变化（/system/bin/ip -o monitor link，阻塞等待，不占 CPU），
 # 有变化时延迟几秒再检查清除；另有低频兜底检查，防止其他未知的写入路径。
 #
 # UID 通过包名动态解析，而不是硬编码：同一个包名在不同设备、不同安装顺序下
@@ -12,6 +12,9 @@ MODDIR=${0%/*}
 BPFTOOL="$MODDIR/bpftool"
 LOG="$MODDIR/unblock_gms.log"
 PENDING="$MODDIR/.pending"
+IPMON_ERR="$MODDIR/ipmon.err"
+# 必须用系统 iproute2：模块环境（BusyBox ash）里的 ip 是 BusyBox applet，不支持 monitor
+IP=/system/bin/ip
 
 MAPS="map_oplus-netd_app_wlan_socket_uid_limit_map map_oplus-netd_app_qcom_socket_uid_limit_map"
 PACKAGES="com.google.android.gms com.android.vending com.google.android.gsf com.google.android.configupdater"
@@ -121,8 +124,14 @@ log "开机检查结束，转入常驻监听（网卡变化触发 + 每 ${FALLBA
 # 只关心 TUN 类网卡（link/none）：蜂窝数据的 rmnet_* 是 link/[519]，
 # 会阵发性地频繁变化，不过滤的话几乎等于高频轮询。
 # 一次 VPN 开关会连续产生多条事件，用 PENDING 标记合并成一次延迟检查。
+if [ ! -x "$IP" ]; then
+  log "无 iproute2 ($IP)，无法监听网卡变化，仅依赖兜底轮询"
+  wait
+  exit 0
+fi
+
 while true; do
-  ip -o monitor link 2>/dev/null | while read -r line; do
+  "$IP" -o monitor link 2>"$IPMON_ERR" | while read -r line; do
     case "$line" in
       *link/none*) ;;
       *) continue ;;
@@ -142,6 +151,6 @@ while true; do
     ) &
   done
   # ip monitor 意外退出时稍后重启监听
-  log "ip monitor 退出，5 秒后重启监听"
+  log "ip monitor 退出，5 秒后重启监听（错误输出见 ipmon.err）"
   sleep 5
 done
